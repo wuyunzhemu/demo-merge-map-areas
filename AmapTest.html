@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      name="viewport"
+      content="initial-scale=1.0, user-scalable=no, width=device-width"
+    />
+    <title>合并地图区域demo</title>
+    <script src="https://unpkg.com/@turf/turf/turf.min.js"></script>
+    <script src="echarts.min.js"></script>
+    <style>
+      html,
+      body,
+      #container {
+        width: 100%;
+        height: 100%;
+      }
+
+      .tools {
+        position: fixed;
+        z-index: 9;
+        right: 100px;
+        bottom: 100px;
+      }
+      button{
+        cursor: pointer;
+      }
+      #on-select-tools{
+        display: none;
+      }
+      #on-select-tools button{
+        float: right;
+        margin: 10px 10px 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container"></div>
+    <div class="tools">
+      <button id="btn-select" style="display: block" onclick="onSelectArea()">
+        选择区域合并
+      </button>
+      <div id="on-select-tools">
+        <input id="input-area" placeholder="请输入合并区域名称" type ="text"/>
+        <button onclick="mergeArea()">合并</button>
+        <button onclick="cancelSelectArea()"> 取消 </button>
+      </div>
+    </div>
+    <script>
+      const request = (url) => fetch(url).then((res) => res.json());
+      const chartDom = document.getElementById("container");
+      const selectBtn = document.getElementById("btn-select");
+      const selectTools = document.getElementById("on-select-tools")
+      const inputDom = document.getElementById("input-area");
+      var geoData;
+      var myChart = echarts.init(chartDom);
+      request("./geo/100000_full.json").then((res) => {
+        geoData = res;
+        console.log(res);
+        echarts.registerMap("testMap", res);
+        myChart.setOption({
+          series: [
+            {
+              name: "china",
+              type: "map",
+              roam: true,
+              map: "testMap",
+            },
+          ],
+        });
+      });
+
+      const mergeArea = () => {
+        const names = Object.keys(myChart.getOption().series[0].selectedMap);
+        console.log('已选中区域',names)
+        const polygons = [];
+        geoData.features = geoData.features.filter((i) => {
+          let tempFlag = true;
+          names.forEach((n) => {
+            if (i.properties.name.includes(n)) {
+              tempFlag = false;
+              const points = i.geometry.coordinates;
+              console.log(points);
+              polygons.push(turf.multiPolygon(points));
+            }
+          });
+          return tempFlag;
+        });
+        let unionGeo = polygons.reduce((pre, cur) => turf.union(pre, cur)); // union只支持两个参数，当选择多个多边形时需要重复合并
+        unionGeo.properties.name = inputDom.value || '自定义区域'
+        geoData.features.push(unionGeo);
+        echarts.registerMap("new Map", geoData);
+        myChart.setOption({
+          series:[{
+            map:"new Map"
+          }]
+        })
+        cancelSelectArea()
+      };
+
+      const onSelectArea = () => {
+        console.log("on select");
+        selectBtn.style.display = "none";
+        selectTools.style.display = "block"
+        myChart.setOption({
+            series:[
+              {selectedMode:'multiple'}
+            ]
+          })
+      };
+      const cancelSelectArea = () => {
+        selectBtn.style.display = "block";
+        selectTools.style.display = "none"
+        inputDom.value=""
+        myChart.setOption({
+            series:[
+              {selectedMode:'single',selectedMap:null}
+            ]
+          })
+        console.log("cancel");
+        myChart.off("click");
+      };
+    </script>
+  </body>
+</html>
